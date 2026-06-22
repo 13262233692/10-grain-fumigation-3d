@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>国家粮库熏蒸气体扩散三维可视化系统</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #0a0e1a;
+      color: #e0e6ed;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    .header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background: linear-gradient(180deg, rgba(10, 14, 26, 0.95) 0%, rgba(10, 14, 26, 0.7) 100%);
+      border-bottom: 1px solid rgba(64, 158, 255, 0.3);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      z-index: 100;
+    }
+
+    .header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      background: linear-gradient(90deg, #409eff, #67c23a);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header .status {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 13px;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #67c23a;
+      box-shadow: 0 0 8px #67c23a;
+    }
+
+    .status-dot.offline {
+      background: #f56c6c;
+      box-shadow: 0 0 8px #f56c6c;
+    }
+
+    .sidebar {
+      position: absolute;
+      left: 0;
+      top: 60px;
+      bottom: 0;
+      width: 320px;
+      background: rgba(10, 14, 26, 0.9);
+      border-right: 1px solid rgba(64, 158, 255, 0.2);
+      padding: 20px;
+      overflow-y: auto;
+      z-index: 99;
+    }
+
+    .sidebar-section {
+      margin-bottom: 24px;
+    }
+
+    .sidebar-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #409eff;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(64, 158, 255, 0.2);
+    }
+
+    .warehouse-selector {
+      width: 100%;
+      padding: 10px 12px;
+      background: rgba(64, 158, 255, 0.1);
+      border: 1px solid rgba(64, 158, 255, 0.3);
+      border-radius: 6px;
+      color: #e0e6ed;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .warehouse-selector:focus {
+      outline: none;
+      border-color: #409eff;
+    }
+
+    .info-card {
+      background: rgba(64, 158, 255, 0.05);
+      border: 1px solid rgba(64, 158, 255, 0.2);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .info-card h4 {
+      font-size: 13px;
+      color: #909399;
+      margin-bottom: 8px;
+    }
+
+    .info-card .value {
+      font-size: 24px;
+      font-weight: 600;
+      color: #409eff;
+    }
+
+    .info-card .unit {
+      font-size: 12px;
+      color: #909399;
+      margin-left: 4px;
+    }
+
+    .risk-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .risk-indicator.high {
+      background: rgba(245, 108, 108, 0.15);
+      border: 1px solid rgba(245, 108, 108, 0.3);
+    }
+
+    .risk-indicator.medium {
+      background: rgba(230, 162, 60, 0.15);
+      border: 1px solid rgba(230, 162, 60, 0.3);
+    }
+
+    .risk-indicator.low {
+      background: rgba(103, 194, 58, 0.15);
+      border: 1px solid rgba(103, 194, 58, 0.3);
+    }
+
+    .risk-icon {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .risk-indicator.high .risk-icon {
+      background: #f56c6c;
+      box-shadow: 0 0 8px #f56c6c;
+    }
+
+    .risk-indicator.medium .risk-icon {
+      background: #e6a23c;
+      box-shadow: 0 0 8px #e6a23c;
+    }
+
+    .risk-indicator.low .risk-icon {
+      background: #67c23a;
+      box-shadow: 0 0 8px #67c23a;
+    }
+
+    .risk-text {
+      flex: 1;
+      font-size: 13px;
+    }
+
+    .risk-value {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .control-panel {
+      position: absolute;
+      right: 20px;
+      top: 80px;
+      width: 280px;
+      background: rgba(10, 14, 26, 0.9);
+      border: 1px solid rgba(64, 158, 255, 0.2);
+      border-radius: 10px;
+      padding: 16px;
+      z-index: 99;
+    }
+
+    .control-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #409eff;
+      margin-bottom: 12px;
+    }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .control-label {
+      font-size: 13px;
+      color: #909399;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 22px;
+      background: rgba(64, 158, 255, 0.2);
+      border-radius: 11px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .toggle-switch.active {
+      background: #409eff;
+    }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.3s;
+    }
+
+    .toggle-switch.active::after {
+      transform: translateX(22px);
+    }
+
+    .slider-container {
+      margin-bottom: 12px;
+    }
+
+    .slider-container label {
+      display: block;
+      font-size: 13px;
+      color: #909399;
+      margin-bottom: 6px;
+    }
+
+    .slider-container input[type="range"] {
+      width: 100%;
+      height: 4px;
+      -webkit-appearance: none;
+      background: rgba(64, 158, 255, 0.2);
+      border-radius: 2px;
+      outline: none;
+    }
+
+    .slider-container input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: #409eff;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .time-slider-container {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 60%;
+      background: rgba(10, 14, 26, 0.9);
+      border: 1px solid rgba(64, 158, 255, 0.2);
+      border-radius: 10px;
+      padding: 16px 24px;
+      z-index: 99;
+    }
+
+    .time-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .time-title {
+      font-size: 13px;
+      color: #409eff;
+      font-weight: 600;
+    }
+
+    .time-display {
+      font-size: 14px;
+      color: #e0e6ed;
+      font-family: monospace;
+    }
+
+    .time-slider {
+      width: 100%;
+      height: 6px;
+      -webkit-appearance: none;
+      background: rgba(64, 158, 255, 0.2);
+      border-radius: 3px;
+      outline: none;
+    }
+
+    .time-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      background: #409eff;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(64, 158, 255, 0.5);
+    }
+
+    .play-controls {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .play-btn {
+      padding: 6px 16px;
+      background: rgba(64, 158, 255, 0.2);
+      border: 1px solid rgba(64, 158, 255, 0.3);
+      border-radius: 4px;
+      color: #409eff;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.3s;
+    }
+
+    .play-btn:hover {
+      background: #409eff;
+      color: #fff;
+    }
+
+    .play-btn.active {
+      background: #409eff;
+      color: #fff;
+    }
+
+    .sensor-list {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .sensor-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 10px;
+      background: rgba(64, 158, 255, 0.05);
+      border-radius: 6px;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+
+    .sensor-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+
+    .sensor-dot.online {
+      background: #67c23a;
+      box-shadow: 0 0 6px #67c23a;
+    }
+
+    .sensor-dot.offline {
+      background: #f56c6c;
+      box-shadow: 0 0 6px #f56c6c;
+    }
+
+    .sensor-code {
+      flex: 1;
+      color: #e0e6ed;
+    }
+
+    .sensor-value {
+      color: #409eff;
+      font-weight: 600;
+    }
+
+    .legend-bar {
+      position: absolute;
+      right: 20px;
+      bottom: 120px;
+      width: 24px;
+      height: 200px;
+      z-index: 99;
+    }
+
+    .legend-gradient {
+      width: 100%;
+      height: 100%;
+      border-radius: 4px;
+      background: linear-gradient(to top, 
+        #0000ff,
+        #00ffff,
+        #00ff00,
+        #ffff00,
+        #ff0000
+      );
+      opacity: 0.8;
+    }
+
+    .legend-labels {
+      position: absolute;
+      right: 32px;
+      top: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #909399;
+    }
+
+    .tooltip {
+      position: absolute;
+      background: rgba(10, 14, 26, 0.95);
+      border: 1px solid rgba(64, 158, 255, 0.3);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 12px;
+      pointer-events: none;
+      z-index: 200;
+      min-width: 150px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .tooltip.visible {
+      opacity: 1;
+    }
+
+    .tooltip-title {
+      font-weight: 600;
+      color: #409eff;
+      margin-bottom: 6px;
+    }
+
+    .tooltip-row {
+      display: flex;
+      justify-content: space-between;
+      color: #909399;
+      margin-bottom: 4px;
+    }
+
+    .tooltip-row span:last-child {
+      color: #e0e6ed;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="canvas-container"></div>
+    
+    <div class="header">
+      <h1>国家粮库熏蒸气体扩散三维可视化系统</h1>
+      <div class="status">
+        <div class="status-item">
+          <div class="status-dot" id="ws-status"></div>
+          <span>实时连接</span>
+        </div>
+        <div class="status-item" id="current-time"></div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-title">仓房选择</div>
+        <select class="warehouse-selector" id="warehouse-select">
+          <option value="">加载中...</option>
+        </select>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-title">实时数据</div>
+        <div class="info-card">
+          <h4>最高浓度</h4>
+          <div>
+            <span class="value" id="max-concentration">--</span>
+            <span class="unit">ppm</span>
+          </div>
+        </div>
+        <div class="info-card">
+          <h4>平均浓度</h4>
+          <div>
+            <span class="value" id="avg-concentration">--</span>
+            <span class="unit">ppm</span>
+          </div>
+        </div>
+        <div class="info-card">
+          <h4>仓内温度</h4>
+          <div>
+            <span class="value" id="avg-temperature">--</span>
+            <span class="unit">°C</span>
+          </div>
+        </div>
+        <div class="info-card">
+          <h4>仓内湿度</h4>
+          <div>
+            <span class="value" id="avg-humidity">--</span>
+            <span class="unit">%RH</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-title">风险等级</div>
+        <div id="risk-indicators"></div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-title">传感器状态</div>
+        <div class="sensor-list" id="sensor-list">
+          <div style="color: #909399; font-size: 12px;">加载中...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="control-panel">
+      <div class="control-title">视图控制</div>
+      
+      <div class="control-row">
+        <span class="control-label">体素云</span>
+        <div class="toggle-switch active" id="toggle-voxels"></div>
+      </div>
+
+      <div class="control-row">
+        <span class="control-label">传感器</span>
+        <div class="toggle-switch active" id="toggle-sensors"></div>
+      </div>
+
+      <div class="control-row">
+        <span class="control-label">通风口</span>
+        <div class="toggle-switch active" id="toggle-vents"></div>
+      </div>
+
+      <div class="control-row">
+        <span class="control-label">粮仓外壳</span>
+        <div class="toggle-switch active" id="toggle-warehouse"></div>
+      </div>
+
+      <div class="control-row">
+        <span class="control-label">网格辅助线</span>
+        <div class="toggle-switch" id="toggle-grid"></div>
+      </div>
+
+      <div class="slider-container">
+        <label>体素透明度: <span id="voxel-opacity-value">0.6</span></label>
+        <input type="range" min="0.1" max="1" step="0.1" value="0.6" id="voxel-opacity">
+      </div>
+
+      <div class="slider-container">
+        <label>体素网格精度: <span id="voxel-size-value">20</span></label>
+        <input type="range" min="10" max="40" step="5" value="20" id="voxel-size">
+      </div>
+    </div>
+
+    <div class="time-slider-container">
+      <div class="time-header">
+        <span class="time-title">历史时间切片</span>
+        <span class="time-display" id="time-display">实时模式</span>
+      </div>
+      <input type="range" min="0" max="100" value="100" class="time-slider" id="time-slider">
+      <div class="play-controls">
+        <button class="play-btn" id="btn-reset">重置</button>
+        <button class="play-btn" id="btn-play">播放</button>
+        <button class="play-btn" id="btn-live">实时</button>
+      </div>
+    </div>
+
+    <div class="legend-bar">
+      <div class="legend-gradient"></div>
+      <div class="legend-labels">
+        <span>高</span>
+        <span>中</span>
+        <span>低</span>
+      </div>
+    </div>
+
+    <div class="tooltip" id="tooltip">
+      <div class="tooltip-title" id="tooltip-title"></div>
+      <div id="tooltip-content"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
