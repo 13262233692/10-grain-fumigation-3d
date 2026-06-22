@@ -76,6 +76,28 @@ class DataService {
     return result.rows;
   }
 
+  async getHistoricalSensorReadings(warehouseId, snapshotTime, windowMs = 1800000) {
+    const windowStart = new Date(snapshotTime.getTime() - windowMs);
+
+    const result = await db.query(
+      `SELECT DISTINCT ON (s.id)
+              s.id as sensor_id, s.code, s.type, s.status,
+              s.pos_x, s.pos_y, s.pos_z,
+              gr.concentration_ppm, gr.temperature, gr.humidity,
+              gr.reading_time, gr.status_code
+       FROM sensor s
+       LEFT JOIN gas_reading gr 
+         ON gr.sensor_id = s.id
+         AND gr.reading_time <= $2
+         AND gr.reading_time >= $3
+       WHERE s.warehouse_id = $1
+       ORDER BY s.id, gr.reading_time DESC NULLS LAST`,
+      [warehouseId, snapshotTime, windowStart]
+    );
+
+    return result.rows.filter((r) => r.reading_time !== null);
+  }
+
   async getVents(warehouseId) {
     const result = await db.query(
       'SELECT * FROM vent_state WHERE warehouse_id = $1 ORDER BY code',
@@ -279,35 +301,41 @@ class DataService {
     return result.rows;
   }
 
-  async getHistoricalVoxelGrid(warehouseId, snapshotTime, gridSize) {
+  async calculateHistoricalVoxelGrid(warehouseId, snapshotTime, gridSize, windowMs = 1800000) {
     const warehouse = await this.getWarehouseById(warehouseId);
     if (!warehouse) {
       throw new Error('Warehouse not found');
     }
 
-    const readings = await db.query(
-      `SELECT DISTINCT ON (s.id) 
-              s.id as sensor_id, s.code, s.type,
-              s.pos_x, s.pos_y, s.pos_z,
-              gr.concentration_ppm, gr.reading_time
-       FROM sensor s
-       JOIN gas_reading gr ON gr.sensor_id = s.id
-       WHERE s.warehouse_id = $1 
-         AND gr.reading_time <= $2
-         AND s.type = 'PH3'
-       ORDER BY s.id, gr.reading_time DESC`,
-      [warehouseId, snapshotTime]
+    const historicalReadings = await this.getHistoricalSensorReadings(
+      warehouseId,
+      snapshotTime,
+      windowMs
     );
 
-    if (readings.rows.length === 0) {
-      return null;
+    const ph3Readings = historicalReadings.filter(
+      (r) => r.type === 'PH3' && r.concentration_ppm !== null
+    );
+
+    if (ph3Readings.length === 0) {
+      return {
+        grid: null,
+        riskZones: [],
+        samples: [],
+        warehouse,
+        snapshotTime,
+        sensorCount: 0,
+      };
     }
 
-    const samples = readings.rows.map((r) => ({
+    const samples = ph3Readings.map((r) => ({
       x: parseFloat(r.pos_x),
       y: parseFloat(r.pos_y),
       z: parseFloat(r.pos_z),
       value: parseFloat(r.concentration_ppm),
+      sensorId: r.sensor_id,
+      sensorCode: r.code,
+      readingTime: r.reading_time,
     }));
 
     const bounds = {
@@ -322,7 +350,31 @@ class DataService {
       gridSize || config.voxel.gridSize
     );
 
-    return interpolator.serializeGrid(grid);
+    const riskResult = interpolator.calculateRiskZones(grid, {
+      low: config.risk.lowThreshold,
+      medium: config.risk.mediumThreshold,
+      high: config.risk.highThreshold,
+    });
+
+    return {
+      grid: interpolator.serializeGrid(grid),
+      riskZones: riskResult.zones,
+      samples,
+      sensorReadings: historicalReadings,
+      warehouse,
+      snapshotTime,
+      sensorCount: ph3Readings.length,
+    };
+  }
+
+  async getHistoricalVoxelGrid(warehouseId, snapshotTime, gridSize, windowMs = 1800000) {
+    const result = await this.calculateHistoricalVoxelGrid(
+      warehouseId,
+      snapshotTime,
+      gridSize,
+      windowMs
+    );
+    return result.grid;
   }
 
   async checkSensorStatuses(warehouseId) {

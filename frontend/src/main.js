@@ -96,6 +96,8 @@ class App {
   }
 
   async _selectWarehouse(warehouseId) {
+    this._exitHistoricalMode();
+
     this.currentWarehouseId = warehouseId;
     this.currentWarehouse = this.warehouses.find(w => w.id === warehouseId);
 
@@ -118,6 +120,9 @@ class App {
         dims.height * 1.5,
         dims.width * 1.5
       );
+
+      document.getElementById('time-slider').value = 100;
+      document.getElementById('time-display').textContent = '实时模式';
 
       this._refreshData();
     }
@@ -275,17 +280,21 @@ class App {
       });
 
       this.ws.on('sensor_update', (data) => {
-        if (data.warehouseId === this.currentWarehouseId) {
+        if (!this.historicalMode && data.warehouseId === this.currentWarehouseId) {
           this._refreshData();
         }
       });
 
       this.ws.on('sensor_batch_update', () => {
-        this._refreshData();
+        if (!this.historicalMode) {
+          this._refreshData();
+        }
       });
 
       this.ws.on('sensor_status', () => {
-        this._refreshData();
+        if (!this.historicalMode) {
+          this._refreshData();
+        }
       });
 
       await this.ws.connect();
@@ -443,6 +452,90 @@ class App {
     this.tooltip.classList.remove('visible');
   }
 
+  _clearSceneState() {
+    if (this.historicalFetchTimeout) {
+      clearTimeout(this.historicalFetchTimeout);
+      this.historicalFetchTimeout = null;
+    }
+
+    if (this.isPlaying) {
+      this._togglePlay();
+    }
+
+    this.voxelCloud.clear();
+    this.sensorVisualizer.clear();
+    this.riskZoneVisualizer.clear();
+    this.ventVisualizer.clear();
+    this._hideTooltip();
+  }
+
+  _enterHistoricalMode() {
+    if (!this.historicalMode) {
+      console.log('[App] Entering historical mode');
+      this.historicalMode = true;
+    }
+  }
+
+  _exitHistoricalMode() {
+    if (this.historicalMode) {
+      console.log('[App] Exiting historical mode, returning to live mode');
+      this.historicalMode = false;
+      this.historicalTime = null;
+      this._clearSceneState();
+    }
+  }
+
+  async _refreshHistoricalData(snapshotTime) {
+    if (!this.currentWarehouseId) return;
+
+    try {
+      const fullData = await this.api.getFullHistoricalVoxel(
+        this.currentWarehouseId,
+        snapshotTime,
+        this.settings.voxelSize
+      );
+
+      if (!fullData) {
+        console.warn('[Historical] No data for snapshot time:', snapshotTime);
+        return;
+      }
+
+      const { grid, riskZones, sensorReadings } = fullData;
+
+      if (grid) {
+        this.voxelCloud.updateGrid(grid);
+        this.sensorVisualizer.setMaxConcentration(grid.maxValue || 500);
+      }
+
+      if (sensorReadings && sensorReadings.length > 0) {
+        this.sensorVisualizer.updateSensors(sensorReadings);
+        this._updateStats(sensorReadings, { riskZones });
+        this._updateSensorList(sensorReadings);
+      }
+
+      if (riskZones && this.currentWarehouse) {
+        const bounds = {
+          length: parseFloat(this.currentWarehouse.length_m),
+          width: parseFloat(this.currentWarehouse.width_m),
+          height: parseFloat(this.currentWarehouse.height_m),
+        };
+        this.riskZoneVisualizer.updateRiskZones(riskZones, bounds);
+      }
+
+      this._updateRiskIndicators({ riskZones });
+
+      try {
+        const vents = await this.api.getVents(this.currentWarehouseId);
+        this.ventVisualizer.updateVents(vents);
+      } catch (ventErr) {
+        console.warn('[Historical] Failed to fetch vents:', ventErr.message);
+      }
+
+    } catch (err) {
+      console.error('[Historical] Failed to refresh historical data:', err);
+    }
+  }
+
   _startDataRefresh() {
     setInterval(() => {
       if (!this.historicalMode && this.currentWarehouseId) {
@@ -460,9 +553,9 @@ class App {
     const now = Date.now();
     const oneHourAgo = now - 3600000;
     const targetTime = oneHourAgo + (value / 100) * (now - oneHourAgo);
-    
+
     this.historicalTime = new Date(targetTime);
-    this.historicalMode = true;
+    this._enterHistoricalMode();
 
     document.getElementById('time-display').textContent = formatDateTime(this.historicalTime);
 
@@ -471,21 +564,7 @@ class App {
     }
 
     this.historicalFetchTimeout = setTimeout(async () => {
-      if (this.currentWarehouseId) {
-        try {
-          const grid = await this.api.getHistoricalVoxel(
-            this.currentWarehouseId,
-            this.historicalTime,
-            this.settings.voxelSize
-          );
-          
-          if (grid) {
-            this.voxelCloud.updateGrid(grid);
-          }
-        } catch (err) {
-          console.error('Failed to fetch historical voxel:', err);
-        }
-      }
+      await this._refreshHistoricalData(this.historicalTime);
     }, 200);
   }
 
@@ -528,15 +607,10 @@ class App {
   }
 
   _goLive() {
-    this.historicalMode = false;
-    this.historicalTime = null;
-    
+    this._exitHistoricalMode();
+
     document.getElementById('time-slider').value = 100;
     document.getElementById('time-display').textContent = '实时模式';
-    
-    if (this.isPlaying) {
-      this._togglePlay();
-    }
 
     this._refreshData();
   }

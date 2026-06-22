@@ -125,18 +125,52 @@ router.get('/warehouses/:id/historical-readings', async (req, res) => {
   }
 });
 
-router.get('/warehouses/:id/historical-voxel', async (req, res) => {
+router.get('/warehouses/:id/historical-sensor-readings', async (req, res) => {
   try {
-    const { snapshot_time, grid_size } = req.query;
+    const { snapshot_time, window_ms } = req.query;
     if (!snapshot_time) {
       return res.status(400).json({ success: false, error: 'snapshot_time is required' });
     }
-    const grid = await dataService.getHistoricalVoxelGrid(
+    const readings = await dataService.getHistoricalSensorReadings(
       req.params.id,
       new Date(snapshot_time),
-      grid_size ? parseInt(grid_size, 10) : null
+      window_ms ? parseInt(window_ms, 10) : undefined
     );
-    res.json({ success: true, data: grid });
+    res.json({ success: true, data: readings });
+  } catch (err) {
+    console.error('Error getting historical sensor readings:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/warehouses/:id/historical-voxel', async (req, res) => {
+  try {
+    const { snapshot_time, grid_size, window_ms, full } = req.query;
+    if (!snapshot_time) {
+      return res.status(400).json({ success: false, error: 'snapshot_time is required' });
+    }
+
+    const snapshotTime = new Date(snapshot_time);
+    const gridSize = grid_size ? parseInt(grid_size, 10) : null;
+    const windowMs = window_ms ? parseInt(window_ms, 10) : undefined;
+
+    if (full === 'true' || full === '1') {
+      const result = await dataService.calculateHistoricalVoxelGrid(
+        req.params.id,
+        snapshotTime,
+        gridSize,
+        windowMs
+      );
+      res.json({ success: true, data: result });
+    } else {
+      const grid = await dataService.getHistoricalVoxelGrid(
+        req.params.id,
+        snapshotTime,
+        gridSize,
+        windowMs
+      );
+      res.json({ success: true, data: grid });
+    }
   } catch (err) {
     console.error('Error getting historical voxel grid:', err);
     res.status(500).json({ success: false, error: err.message });

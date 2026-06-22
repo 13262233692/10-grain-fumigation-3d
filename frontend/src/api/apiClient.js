@@ -73,10 +73,29 @@ class ApiClient {
     return result.data || [];
   }
 
-  async getHistoricalVoxel(warehouseId, snapshotTime, gridSize = null) {
+  async getHistoricalSensorReadings(warehouseId, snapshotTime, windowMs) {
+    const params = new URLSearchParams();
+    params.set('snapshot_time', snapshotTime.toISOString());
+    if (windowMs) params.set('window_ms', windowMs);
+    const result = await this.request(`/warehouses/${warehouseId}/historical-sensor-readings?${params.toString()}`);
+    return result.data || [];
+  }
+
+  async getHistoricalVoxel(warehouseId, snapshotTime, gridSize = null, windowMs = null) {
     const params = new URLSearchParams();
     params.set('snapshot_time', snapshotTime.toISOString());
     if (gridSize) params.set('grid_size', gridSize);
+    if (windowMs) params.set('window_ms', windowMs);
+    const result = await this.request(`/warehouses/${warehouseId}/historical-voxel?${params.toString()}`);
+    return result.data;
+  }
+
+  async getFullHistoricalVoxel(warehouseId, snapshotTime, gridSize = null, windowMs = null) {
+    const params = new URLSearchParams();
+    params.set('snapshot_time', snapshotTime.toISOString());
+    params.set('full', 'true');
+    if (gridSize) params.set('grid_size', gridSize);
+    if (windowMs) params.set('window_ms', windowMs);
     const result = await this.request(`/warehouses/${warehouseId}/historical-voxel?${params.toString()}`);
     return result.data;
   }
