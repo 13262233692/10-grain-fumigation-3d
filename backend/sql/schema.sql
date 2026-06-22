@@ -171,3 +171,41 @@ INSERT INTO vent_state (warehouse_id, code, name, pos_x, pos_y, pos_z, direction
 SELECT w.id, 'VENT-OUT-01', '排风口1', 60.0, 15.0, 7.0, 'out', true, 80
 FROM warehouse w WHERE w.code = 'WH-001'
 ON CONFLICT DO NOTHING;
+
+INSERT INTO vent_state (warehouse_id, code, name, pos_x, pos_y, pos_z, direction, is_open, fan_speed)
+SELECT w.id, 'VENT-OUT-02', '排风口2', 60.0, 5.0, 6.0, 'out', false, 0
+FROM warehouse w WHERE w.code = 'WH-001'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO vent_state (warehouse_id, code, name, pos_x, pos_y, pos_z, direction, is_open, fan_speed)
+SELECT w.id, 'VENT-IN-02', '进风口2', 0.0, 25.0, 4.0, 'in', false, 0
+FROM warehouse w WHERE w.code = 'WH-001'
+ON CONFLICT DO NOTHING;
+
+-- 通风模拟任务表
+CREATE TABLE IF NOT EXISTS ventilation_simulation (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    warehouse_id UUID NOT NULL REFERENCES warehouse(id) ON DELETE CASCADE,
+    name VARCHAR(200) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    vent_config JSONB NOT NULL,
+    grid_size INTEGER NOT NULL DEFAULT 10,
+    total_seconds INTEGER NOT NULL DEFAULT 3600,
+    time_step_seconds INTEGER NOT NULL DEFAULT 60,
+    initial_snapshot_time TIMESTAMP,
+    progress INTEGER DEFAULT 0,
+    results JSONB,
+    error_message TEXT,
+    canceled_at TIMESTAMP,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_vent_sim_warehouse ON ventilation_simulation(warehouse_id);
+CREATE INDEX IF NOT EXISTS idx_vent_sim_status ON ventilation_simulation(status);
+CREATE INDEX IF NOT EXISTS idx_vent_sim_created ON ventilation_simulation(created_at DESC);
+
+CREATE TRIGGER update_vent_sim_updated_at BEFORE UPDATE ON ventilation_simulation
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

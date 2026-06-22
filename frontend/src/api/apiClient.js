@@ -135,6 +135,50 @@ class ApiClient {
     });
     return result.data;
   }
+
+  async createVentilationSimulation(warehouseId, params) {
+    const result = await this.request(`/warehouses/${warehouseId}/ventilation-simulations`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: params.name,
+        vent_config: params.ventConfig,
+        grid_size: params.gridSize,
+        total_seconds: params.totalSeconds,
+        time_step_seconds: params.timeStepSeconds,
+        initial_snapshot_time: params.initialSnapshotTime ? params.initialSnapshotTime.toISOString() : null,
+      }),
+    });
+    return result.data;
+  }
+
+  async listVentilationSimulations(warehouseId, options = {}) {
+    const params = new URLSearchParams();
+    if (options.limit) params.set('limit', options.limit);
+    if (options.offset) params.set('offset', options.offset);
+    if (options.status) params.set('status', options.status);
+    const query = params.toString() ? `?${params.toString()}` : '';
+    const result = await this.request(`/warehouses/${warehouseId}/ventilation-simulations${query}`);
+    return result.data || [];
+  }
+
+  async getVentilationSimulation(simId) {
+    const result = await this.request(`/ventilation-simulations/${simId}`);
+    return result.data;
+  }
+
+  async cancelVentilationSimulation(simId) {
+    const result = await this.request(`/ventilation-simulations/${simId}/cancel`, {
+      method: 'POST',
+    });
+    return result.data;
+  }
+
+  async deleteVentilationSimulation(simId) {
+    const result = await this.request(`/ventilation-simulations/${simId}`, {
+      method: 'DELETE',
+    });
+    return result.data;
+  }
 }
 
 export default ApiClient;

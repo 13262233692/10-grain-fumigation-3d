@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dataService = require('../services/dataService');
 const SensorParser = require('../parsers/sensorParser');
+const simulationManager = require('../simulation/simulationManager');
 
 const router = express.Router();
 const parser = new SensorParser();
@@ -288,6 +289,92 @@ router.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });
+});
+
+router.post('/warehouses/:id/ventilation-simulations', async (req, res) => {
+  try {
+    const {
+      name,
+      vent_config,
+      grid_size,
+      total_seconds,
+      time_step_seconds,
+      initial_snapshot_time,
+    } = req.body;
+
+    if (!vent_config || !Array.isArray(vent_config)) {
+      return res.status(400).json({ success: false, error: 'vent_config array is required' });
+    }
+
+    const sim = await simulationManager.createSimulation({
+      warehouseId: req.params.id,
+      name,
+      ventConfig: vent_config,
+      gridSize: grid_size ? parseInt(grid_size, 10) : undefined,
+      totalSeconds: total_seconds ? parseInt(total_seconds, 10) : undefined,
+      timeStepSeconds: time_step_seconds ? parseInt(time_step_seconds, 10) : undefined,
+      initialSnapshotTime: initial_snapshot_time || null,
+    });
+
+    res.json({ success: true, data: sim });
+  } catch (err) {
+    console.error('Error creating simulation:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/warehouses/:id/ventilation-simulations', async (req, res) => {
+  try {
+    const { limit, offset, status } = req.query;
+    const sims = await simulationManager.listSimulations(req.params.id, {
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
+      status,
+    });
+    res.json({ success: true, data: sims });
+  } catch (err) {
+    console.error('Error listing simulations:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/ventilation-simulations/:id', async (req, res) => {
+  try {
+    const sim = await simulationManager.getSimulation(req.params.id);
+    if (!sim) {
+      return res.status(404).json({ success: false, error: 'Simulation not found' });
+    }
+    res.json({ success: true, data: sim });
+  } catch (err) {
+    console.error('Error getting simulation:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/ventilation-simulations/:id/cancel', async (req, res) => {
+  try {
+    const sim = await simulationManager.cancelSimulation(req.params.id);
+    if (!sim) {
+      return res.status(404).json({ success: false, error: 'Simulation not found' });
+    }
+    res.json({ success: true, data: sim });
+  } catch (err) {
+    console.error('Error canceling simulation:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/ventilation-simulations/:id', async (req, res) => {
+  try {
+    const sim = await simulationManager.deleteSimulation(req.params.id);
+    if (!sim) {
+      return res.status(404).json({ success: false, error: 'Simulation not found' });
+    }
+    res.json({ success: true, data: sim });
+  } catch (err) {
+    console.error('Error deleting simulation:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 module.exports = router;

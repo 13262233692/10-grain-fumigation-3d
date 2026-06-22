@@ -40,6 +40,16 @@ class App {
     this.isPlaying = false;
     this.playInterval = null;
 
+    this.simulationMode = false;
+    this.currentSimulation = null;
+    this.simulationFrames = [];
+    this.currentSimFrameIdx = 0;
+    this.simPlayInterval = null;
+    this.simIsPlaying = false;
+    this.simPollInterval = null;
+    this.simVents = [];
+    this.simVentConfig = new Map();
+
     this.tooltip = document.getElementById('tooltip');
 
     this._init();
@@ -125,6 +135,8 @@ class App {
       document.getElementById('time-display').textContent = '实时模式';
 
       this._refreshData();
+      this._refreshSimulationVents();
+      this._refreshSimulationList();
     }
   }
 
@@ -399,6 +411,8 @@ class App {
     document.getElementById('btn-live').addEventListener('click', () => {
       this._goLive();
     });
+
+    this._setupSimulationControls();
   }
 
   _setupTooltip() {
@@ -613,6 +627,366 @@ class App {
     document.getElementById('time-display').textContent = '实时模式';
 
     this._refreshData();
+  }
+
+  _setupSimulationControls() {
+    document.getElementById('btn-start-sim').addEventListener('click', () => {
+      this._startSimulation();
+    });
+
+    document.getElementById('btn-cancel-sim').addEventListener('click', () => {
+      this._cancelSimulation();
+    });
+  }
+
+  async _refreshSimulationVents() {
+    if (!this.currentWarehouseId) return;
+
+    try {
+      const vents = await this.api.getVents(this.currentWarehouseId);
+      this.simVents = vents;
+      this.simVentConfig = new Map();
+
+      for (const v of vents) {
+        this.simVentConfig.set(v.code, {
+          code: v.code,
+          direction: v.direction,
+          is_open: v.is_open || false,
+          fan_speed: v.fan_speed || 0,
+        });
+      }
+
+      this._renderVentConfigUI();
+    } catch (err) {
+      console.error('Failed to refresh sim vents:', err);
+      document.getElementById('sim-vent-list').innerHTML =
+        '<div style="color: #f56c6c; font-size: 11px;">加载失败</div>';
+    }
+  }
+
+  _renderVentConfigUI() {
+    const list = document.getElementById('sim-vent-list');
+    list.innerHTML = '';
+
+    if (this.simVents.length === 0) {
+      list.innerHTML = '<div style="color: #909399; font-size: 11px;">无可用通风口</div>';
+      return;
+    }
+
+    for (const vent of this.simVents) {
+      const cfg = this.simVentConfig.get(vent.code);
+      const item = document.createElement('div');
+      item.className = 'vent-item';
+
+      item.innerHTML = `
+        <div class="vent-info">
+          <span class="vent-code">${vent.code || vent.name}</span>
+          <span class="vent-dir">${cfg.direction === 'in' ? '进风' : '排风'}</span>
+        </div>
+        <div class="vent-controls">
+          <div class="toggle-switch ${cfg.is_open ? 'active' : ''}" data-vent="${vent.code}"></div>
+          <input type="range" min="0" max="100" step="10" value="${cfg.fan_speed || 0}"
+                 class="fan-speed-slider" data-fan="${vent.code}" ${cfg.is_open ? '' : 'disabled'}>
+          <span style="font-size: 10px; color: #909399; width: 28px; text-align: right;">${cfg.fan_speed || 0}%</span>
+        </div>
+      `;
+      list.appendChild(item);
+    }
+
+    list.querySelectorAll('.toggle-switch').forEach((el) => {
+      el.addEventListener('click', () => {
+        const code = el.dataset.vent;
+        const cfg = this.simVentConfig.get(code);
+        cfg.is_open = !cfg.is_open;
+        el.classList.toggle('active', cfg.is_open);
+        const fanSlider = list.querySelector(`.fan-speed-slider[data-fan="${code}"]`);
+        if (fanSlider) {
+          fanSlider.disabled = !cfg.is_open;
+          if (!cfg.is_open) {
+            cfg.fan_speed = 0;
+            fanSlider.value = 0;
+            fanSlider.nextElementSibling.textContent = '0%';
+          }
+        }
+      });
+    });
+
+    list.querySelectorAll('.fan-speed-slider').forEach((el) => {
+      el.addEventListener('input', () => {
+        const code = el.dataset.fan;
+        const cfg = this.simVentConfig.get(code);
+        cfg.fan_speed = parseInt(el.value, 10);
+        el.nextElementSibling.textContent = `${cfg.fan_speed}%`;
+      });
+    });
+  }
+
+  async _startSimulation() {
+    if (!this.currentWarehouseId) return;
+
+    const ventConfig = Array.from(this.simVentConfig.values());
+    const name = document.getElementById('sim-name').value.trim() || null;
+    const totalSeconds = parseInt(document.getElementById('sim-total-seconds').value, 10);
+    const timeStepSeconds = parseInt(document.getElementById('sim-step-seconds').value, 10);
+
+    try {
+      const sim = await this.api.createVentilationSimulation(this.currentWarehouseId, {
+        name,
+        ventConfig,
+        gridSize: this.settings.voxelSize,
+        totalSeconds,
+        timeStepSeconds,
+        initialSnapshotTime: this.historicalTime || null,
+      });
+
+      this.currentSimulation = sim;
+      this.simulationMode = true;
+
+      document.getElementById('sim-status').textContent = `模拟中... 0%`;
+      document.getElementById('sim-status').className = 'sim-status running';
+      document.getElementById('sim-progress').style.display = 'block';
+      document.getElementById('sim-progress-bar').style.width = '0%';
+      document.getElementById('btn-start-sim').style.display = 'none';
+      document.getElementById('btn-cancel-sim').style.display = 'block';
+
+      this._startSimPolling(sim.id);
+      await this._refreshSimulationList();
+    } catch (err) {
+      console.error('Failed to start simulation:', err);
+      document.getElementById('sim-status').textContent = `启动失败: ${err.message}`;
+      document.getElementById('sim-status').className = 'sim-status failed';
+    }
+  }
+
+  async _cancelSimulation() {
+    if (!this.currentSimulation) return;
+
+    try {
+      await this.api.cancelVentilationSimulation(this.currentSimulation.id);
+      document.getElementById('sim-status').textContent = '已取消';
+      document.getElementById('sim-status').className = 'sim-status canceled';
+      this._stopSimPolling();
+      document.getElementById('btn-start-sim').style.display = 'block';
+      document.getElementById('btn-cancel-sim').style.display = 'none';
+      await this._refreshSimulationList();
+    } catch (err) {
+      console.error('Failed to cancel simulation:', err);
+    }
+  }
+
+  _startSimPolling(simId) {
+    this._stopSimPolling();
+    this.simPollInterval = setInterval(async () => {
+      try {
+        const sim = await this.api.getVentilationSimulation(simId);
+        if (!sim) return;
+
+        this.currentSimulation = sim;
+        document.getElementById('sim-progress-bar').style.width = `${sim.progress || 0}%`;
+        document.getElementById('sim-status').textContent = `模拟中... ${sim.progress || 0}%`;
+
+        if (sim.status === 'completed') {
+          this._stopSimPolling();
+          this._onSimulationComplete(sim);
+        } else if (sim.status === 'failed') {
+          this._stopSimPolling();
+          document.getElementById('sim-status').textContent = `失败: ${sim.errorMessage || '未知错误'}`;
+          document.getElementById('sim-status').className = 'sim-status failed';
+          document.getElementById('btn-start-sim').style.display = 'block';
+          document.getElementById('btn-cancel-sim').style.display = 'none';
+        } else if (sim.status === 'canceled') {
+          this._stopSimPolling();
+          document.getElementById('sim-status').textContent = '已取消';
+          document.getElementById('sim-status').className = 'sim-status canceled';
+          document.getElementById('btn-start-sim').style.display = 'block';
+          document.getElementById('btn-cancel-sim').style.display = 'none';
+        }
+      } catch (err) {
+        console.error('Poll simulation error:', err);
+      }
+    }, 1000);
+  }
+
+  _stopSimPolling() {
+    if (this.simPollInterval) {
+      clearInterval(this.simPollInterval);
+      this.simPollInterval = null;
+    }
+  }
+
+  _onSimulationComplete(sim) {
+    document.getElementById('sim-status').textContent = '完成';
+    document.getElementById('sim-status').className = 'sim-status completed';
+    document.getElementById('sim-progress-bar').style.width = '100%';
+    document.getElementById('btn-start-sim').style.display = 'block';
+    document.getElementById('btn-cancel-sim').style.display = 'none';
+
+    if (sim.results && sim.results.frames) {
+      this.simulationFrames = sim.results.frames;
+      this.currentSimFrameIdx = 0;
+      this._renderSimFrame(0);
+
+      if (sim.results.summary) {
+        document.getElementById('sim-summary').style.display = 'block';
+        document.getElementById('sim-init-avg').textContent =
+          `${formatNumber(sim.results.summary.initialAvg || 0)} ppm`;
+        document.getElementById('sim-final-avg').textContent =
+          `${formatNumber(sim.results.summary.finalAvg || 0)} ppm`;
+        document.getElementById('sim-reduction').textContent =
+          `${sim.results.summary.avgReductionPct || 0}%`;
+        const half = sim.results.summary.halfReductionTimeSeconds;
+        document.getElementById('sim-half-time').textContent =
+          half != null ? `${Math.round(half / 60)} 分钟` : '未达到';
+      }
+
+      this._startSimAnimation();
+    }
+
+    this._refreshSimulationList();
+  }
+
+  _renderSimFrame(frameIdx) {
+    if (frameIdx < 0 || frameIdx >= this.simulationFrames.length) return;
+
+    const frame = this.simulationFrames[frameIdx];
+    this.currentSimFrameIdx = frameIdx;
+
+    const dims = frame.dimensions || { nx: 20, ny: 20, nz: 20 };
+    const grid = {
+      size: Math.max(dims.nx, dims.ny, dims.nz),
+      dimensions: { x: dims.nx, y: dims.ny, z: dims.nz },
+      steps: {
+        x: (frame.bounds?.length || 60) / dims.nx,
+        y: (frame.bounds?.height || 8) / dims.ny,
+        z: (frame.bounds?.width || 30) / dims.nz,
+      },
+      bounds: frame.bounds || { length: 60, width: 30, height: 8 },
+      voxels: frame.voxels || [],
+      data: [],
+      maxValue: frame.stats?.max || 500,
+      minValue: frame.stats?.min || 0,
+      fromSimulation: true,
+    };
+
+    if (frame.voxels) {
+      const nx = dims.nx, ny = dims.ny, nz = dims.nz;
+      const data = new Float32Array(nx * ny * nz);
+      for (const v of frame.voxels) {
+        const ix = Math.floor(v.x / grid.steps.x);
+        const iy = Math.floor(v.y / grid.steps.y);
+        const iz = Math.floor(v.z / grid.steps.z);
+        if (ix >= 0 && ix < nx && iy >= 0 && iy < ny && iz >= 0 && iz < nz) {
+          data[ix + iy * nx + iz * nx * ny] = v.value;
+        }
+      }
+      grid.data = Array.from(data);
+    }
+
+    this.voxelCloud.updateGrid(grid);
+
+    const tSec = frame.time || 0;
+    const mins = Math.floor(tSec / 60);
+    const secs = tSec % 60;
+    document.getElementById('time-display').textContent =
+      `模拟 T+${mins}:${secs.toString().padStart(2, '0')} | 平均: ${formatNumber(frame.stats?.avg || 0)} ppm`;
+    document.getElementById('time-slider').value =
+      this.simulationFrames.length > 1
+        ? Math.round((frameIdx / (this.simulationFrames.length - 1)) * 100)
+        : 100;
+  }
+
+  _startSimAnimation() {
+    this._stopSimAnimation();
+    this.simIsPlaying = true;
+    this.simPlayInterval = setInterval(() => {
+      let nextIdx = this.currentSimFrameIdx + 1;
+      if (nextIdx >= this.simulationFrames.length) {
+        nextIdx = 0;
+      }
+      this._renderSimFrame(nextIdx);
+    }, 400);
+  }
+
+  _stopSimAnimation() {
+    if (this.simPlayInterval) {
+      clearInterval(this.simPlayInterval);
+      this.simPlayInterval = null;
+    }
+    this.simIsPlaying = false;
+  }
+
+  async _refreshSimulationList() {
+    if (!this.currentWarehouseId) return;
+
+    try {
+      const sims = await this.api.listVentilationSimulations(this.currentWarehouseId, { limit: 10 });
+      const list = document.getElementById('sim-list');
+      list.innerHTML = '';
+
+      if (sims.length === 0) {
+        list.innerHTML = '<div style="color: #909399; font-size: 11px;">暂无记录</div>';
+        return;
+      }
+
+      for (const sim of sims) {
+        const item = document.createElement('div');
+        item.className = 'sim-list-item' +
+          (this.currentSimulation && this.currentSimulation.id === sim.id ? ' active' : '');
+        const statusText = {
+          pending: '等待中', running: '进行中', completed: '完成',
+          failed: '失败', canceled: '已取消',
+        }[sim.status] || sim.status;
+
+        item.innerHTML = `
+          <div class="sim-list-name">${sim.name || '未命名'}</div>
+          <div class="sim-list-meta">${statusText} · ${sim.progress || 0}% · ${sim.ventConfig?.length || 0}个通风口</div>
+        `;
+
+        item.addEventListener('click', () => {
+          this._loadSimulation(sim);
+        });
+
+        list.appendChild(item);
+      }
+    } catch (err) {
+      console.error('Failed to list simulations:', err);
+    }
+  }
+
+  async _loadSimulation(sim) {
+    this.currentSimulation = sim;
+    this.simulationMode = true;
+
+    if (sim.status === 'completed' && sim.results && sim.results.frames) {
+      this.simulationFrames = sim.results.frames;
+      this.currentSimFrameIdx = 0;
+      this._renderSimFrame(0);
+      this._startSimAnimation();
+
+      if (sim.results.summary) {
+        document.getElementById('sim-summary').style.display = 'block';
+        document.getElementById('sim-init-avg').textContent =
+          `${formatNumber(sim.results.summary.initialAvg || 0)} ppm`;
+        document.getElementById('sim-final-avg').textContent =
+          `${formatNumber(sim.results.summary.finalAvg || 0)} ppm`;
+        document.getElementById('sim-reduction').textContent =
+          `${sim.results.summary.avgReductionPct || 0}%`;
+        const half = sim.results.summary.halfReductionTimeSeconds;
+        document.getElementById('sim-half-time').textContent =
+          half != null ? `${Math.round(half / 60)} 分钟` : '未达到';
+      }
+    } else if (sim.status === 'running' || sim.status === 'pending') {
+      document.getElementById('sim-status').textContent = `${sim.status === 'running' ? '模拟中' : '等待中'}... ${sim.progress || 0}%`;
+      document.getElementById('sim-status').className = 'sim-status running';
+      document.getElementById('sim-progress').style.display = 'block';
+      document.getElementById('sim-progress-bar').style.width = `${sim.progress || 0}%`;
+      document.getElementById('btn-start-sim').style.display = 'none';
+      document.getElementById('btn-cancel-sim').style.display = 'block';
+      this._startSimPolling(sim.id);
+    }
+
+    document.getElementById('sim-name').value = sim.name || '';
+    await this._refreshSimulationList();
   }
 
   _loadMockData() {

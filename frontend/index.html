@@ -484,6 +484,214 @@
     .tooltip-row span:last-child {
       color: #e0e6ed;
     }
+
+    .sim-panel {
+      position: absolute;
+      right: 20px;
+      top: 420px;
+      width: 280px;
+      background: rgba(10, 14, 26, 0.9);
+      border: 1px solid rgba(103, 194, 58, 0.3);
+      border-radius: 10px;
+      padding: 16px;
+      z-index: 99;
+      max-height: 450px;
+      overflow-y: auto;
+    }
+
+    .sim-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #67c23a;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(103, 194, 58, 0.2);
+    }
+
+    .vent-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(64, 158, 255, 0.1);
+    }
+
+    .vent-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .vent-code {
+      font-size: 12px;
+      color: #e0e6ed;
+    }
+
+    .vent-dir {
+      font-size: 10px;
+      color: #909399;
+    }
+
+    .vent-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .fan-speed-slider {
+      width: 60px;
+      height: 3px;
+      -webkit-appearance: none;
+      background: rgba(103, 194, 58, 0.2);
+      border-radius: 2px;
+    }
+
+    .fan-speed-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 10px;
+      height: 10px;
+      background: #67c23a;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .sim-input {
+      width: 100%;
+      padding: 6px 8px;
+      background: rgba(64, 158, 255, 0.1);
+      border: 1px solid rgba(64, 158, 255, 0.2);
+      border-radius: 4px;
+      color: #e0e6ed;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .sim-btn {
+      width: 100%;
+      padding: 8px 12px;
+      background: rgba(103, 194, 58, 0.2);
+      border: 1px solid rgba(103, 194, 58, 0.3);
+      border-radius: 4px;
+      color: #67c23a;
+      cursor: pointer;
+      font-size: 12px;
+      margin-top: 8px;
+      transition: all 0.3s;
+    }
+
+    .sim-btn:hover {
+      background: #67c23a;
+      color: #fff;
+    }
+
+    .sim-btn.danger {
+      background: rgba(245, 108, 108, 0.2);
+      border: 1px solid rgba(245, 108, 108, 0.3);
+      color: #f56c6c;
+    }
+
+    .sim-btn.danger:hover {
+      background: #f56c6c;
+      color: #fff;
+    }
+
+    .sim-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .sim-progress {
+      margin: 8px 0;
+      height: 4px;
+      background: rgba(64, 158, 255, 0.1);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .sim-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #67c23a, #409eff);
+      transition: width 0.3s;
+      width: 0%;
+    }
+
+    .sim-status {
+      font-size: 11px;
+      color: #909399;
+      margin-top: 8px;
+    }
+
+    .sim-status.running {
+      color: #e6a23c;
+    }
+
+    .sim-status.completed {
+      color: #67c23a;
+    }
+
+    .sim-status.failed,
+    .sim-status.canceled {
+      color: #f56c6c;
+    }
+
+    .sim-summary {
+      margin-top: 12px;
+      padding: 10px;
+      background: rgba(103, 194, 58, 0.05);
+      border: 1px solid rgba(103, 194, 58, 0.2);
+      border-radius: 6px;
+      font-size: 11px;
+    }
+
+    .sim-summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+    }
+
+    .sim-summary-row span:first-child {
+      color: #909399;
+    }
+
+    .sim-summary-row span:last-child {
+      color: #e0e6ed;
+      font-weight: 600;
+    }
+
+    .sim-list {
+      margin-top: 12px;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+
+    .sim-list-item {
+      padding: 8px 10px;
+      background: rgba(64, 158, 255, 0.05);
+      border-radius: 4px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    .sim-list-item:hover {
+      background: rgba(64, 158, 255, 0.15);
+    }
+
+    .sim-list-item.active {
+      background: rgba(103, 194, 58, 0.15);
+      border: 1px solid rgba(103, 194, 58, 0.3);
+    }
+
+    .sim-list-name {
+      color: #e0e6ed;
+      font-weight: 600;
+    }
+
+    .sim-list-meta {
+      color: #909399;
+      font-size: 10px;
+      margin-top: 2px;
+    }
   </style>
 </head>
 <body>
@@ -590,6 +798,53 @@
       <div class="slider-container">
         <label>体素网格精度: <span id="voxel-size-value">20</span></label>
         <input type="range" min="10" max="40" step="5" value="20" id="voxel-size">
+      </div>
+    </div>
+
+    <div class="sim-panel" id="sim-panel">
+      <div class="sim-title">通风策略模拟</div>
+
+      <input type="text" class="sim-input" id="sim-name" placeholder="模拟任务名称（可选）">
+
+      <div style="font-size: 12px; color: #909399; margin-bottom: 6px;">通风口配置</div>
+      <div id="sim-vent-list">
+        <div style="color: #909399; font-size: 11px;">加载中...</div>
+      </div>
+
+      <div style="display: flex; gap: 6px; margin-top: 10px;">
+        <select class="sim-input" id="sim-total-seconds" style="flex: 1; margin-bottom: 0;">
+          <option value="1800">30分钟</option>
+          <option value="3600" selected>1小时</option>
+          <option value="7200">2小时</option>
+          <option value="14400">4小时</option>
+        </select>
+        <select class="sim-input" id="sim-step-seconds" style="flex: 1; margin-bottom: 0;">
+          <option value="30">30秒</option>
+          <option value="60" selected>1分钟</option>
+          <option value="180">3分钟</option>
+          <option value="300">5分钟</option>
+        </select>
+      </div>
+
+      <div class="sim-progress" id="sim-progress" style="display: none;">
+        <div class="sim-progress-bar" id="sim-progress-bar"></div>
+      </div>
+      <div class="sim-status" id="sim-status">待启动</div>
+
+      <button class="sim-btn" id="btn-start-sim">开始模拟</button>
+      <button class="sim-btn danger" id="btn-cancel-sim" style="display: none;">取消模拟</button>
+
+      <div class="sim-summary" id="sim-summary" style="display: none;">
+        <div style="font-weight: 600; color: #67c23a; margin-bottom: 6px;">模拟结果摘要</div>
+        <div class="sim-summary-row"><span>初始平均浓度:</span><span id="sim-init-avg">--</span></div>
+        <div class="sim-summary-row"><span>最终平均浓度:</span><span id="sim-final-avg">--</span></div>
+        <div class="sim-summary-row"><span>降幅:</span><span id="sim-reduction">--</span></div>
+        <div class="sim-summary-row"><span>半衰期:</span><span id="sim-half-time">--</span></div>
+      </div>
+
+      <div style="font-size: 12px; color: #909399; margin: 12px 0 6px 0;">历史模拟</div>
+      <div class="sim-list" id="sim-list">
+        <div style="color: #909399; font-size: 11px;">暂无记录</div>
       </div>
     </div>
 
